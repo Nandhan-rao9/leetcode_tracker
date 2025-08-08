@@ -1,6 +1,5 @@
 # src/routes/problems_routes.py
 from flask import Blueprint, request, jsonify
-from bson import ObjectId
 from datetime import datetime
 from ..db import db
 
@@ -11,6 +10,7 @@ def _to_iso(dt):
         return dt.isoformat()
     return dt
 
+
 @bp_problems.get("/problems")
 def list_problems():
     """
@@ -18,11 +18,11 @@ def list_problems():
       q: text search on title (regex, case-insensitive)
       difficulty: Easy|Medium|Hard
       tags: comma-separated (requires ALL)
-      userId: for lastSolved + customTags
-      sort: title|lastSolved|difficulty  (default: title)
-      order: 1|-1                        (default: 1)
-      skip: int                          (default: 0)
-      limit: int                         (default: 50; max 200)
+      userId: for solved dates + customTags
+      sort: title|lastSolved|firstSolved|difficulty  (default: title)
+      order: 1|-1                                   (default: 1)
+      skip: int                                     (default: 0)
+      limit: int                                    (default: 50; max 200)
     """
     q = (request.args.get("q") or "").strip()
     difficulty = request.args.get("difficulty")
@@ -54,7 +54,7 @@ def list_problems():
 
     pipeline = [{"$match": match}]
 
-    # Join last submission date for given user
+    # Join user's first and last submission dates (AC timeline already deduped at import)
     if user_id:
         pipeline += [
             {
@@ -72,14 +72,23 @@ def list_problems():
                                 }
                             }
                         },
-                        {"$sort": {"submittedAt": -1}},
-                        {"$limit": 1},
                         {"$project": {"submittedAt": 1}},
-                    ]
+                        {"$sort": {"submittedAt": 1}},
+                    ],
+                    "as": "subs",
                 }
             },
-            {"$addFields": {"lastSolved": {"$ifNull": [{"$arrayElemAt": ["$submissionList.submittedAt", 0]}, None]}}},
-            {"$project": {"submissionList": 0}},
+            {
+                "$addFields": {
+                    "firstSolved": {
+                        "$ifNull": [{"$arrayElemAt": ["$subs.submittedAt", 0]}, None]
+                    },
+                    "lastSolved": {
+                        "$ifNull": [{"$arrayElemAt": ["$subs.submittedAt", -1]}, None]
+                    },
+                }
+            },
+            {"$project": {"subs": 0}},
         ]
 
         # Join user's custom tags for this problem
@@ -104,7 +113,13 @@ def list_problems():
                     "as": "customTagsDocs",
                 }
             },
-            {"$addFields": {"customTags": {"$map": {"input": "$customTagsDocs", "as": "t", "in": "$$t.tag"}}}},
+            {
+                "$addFields": {
+                    "customTags": {
+                        "$map": {"input": "$customTagsDocs", "as": "t", "in": "$$t.tag"}
+                    }
+                }
+            },
             {"$project": {"customTagsDocs": 0}},
         ]
 
@@ -112,13 +127,13 @@ def list_problems():
         "title": "title",
         "difficulty": "difficulty",
         "lastSolved": "lastSolved",
+        "firstSolved": "firstSolved",
     }.get(sort, "title")
 
     pipeline += [
         {"$sort": {sort_key: order, "_id": 1}},
         {"$skip": skip},
         {"$limit": limit},
-        # project explicit fields incl. slug
         {
             "$project": {
                 "_id": 1,
@@ -130,6 +145,7 @@ def list_problems():
                 "customTags": {"$ifNull": ["$customTags", []]},
                 "createdAt": 1,
                 "updatedAt": 1,
+                "firstSolved": 1,
                 "lastSolved": 1,
             }
         },
@@ -144,6 +160,8 @@ def list_problems():
             d["createdAt"] = _to_iso(d["createdAt"])
         if "updatedAt" in d:
             d["updatedAt"] = _to_iso(d["updatedAt"])
+        if "firstSolved" in d:
+            d["firstSolved"] = _to_iso(d["firstSolved"])
         if "lastSolved" in d:
             d["lastSolved"] = _to_iso(d["lastSolved"])
 
@@ -155,13 +173,8 @@ def problems_missing_meta():
     """
     Returns problems that need enrichment:
     - difficulty is null OR lcTags is empty OR title looks like a slug
-    Now returns full docs (slug, title, url, difficulty, lcTags, timestamps).
+    Returns full docs (slug, title, url, difficulty, lcTags, timestamps).
     """
-    from datetime import datetime
-
-    def _to_iso(dt):
-        return dt.isoformat() if isinstance(dt, datetime) else dt
-
     try:
         limit = min(500, max(1, int(request.args.get("limit", "200"))))
     except ValueError:
@@ -177,7 +190,6 @@ def problems_missing_meta():
                 {"title": looks_like_slug},
             ]
         }
-        # <- no projection here; return full doc
     ).limit(limit)
 
     items = []
