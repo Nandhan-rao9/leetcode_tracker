@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>LeetCode Sync</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="wrap">
+    <h1>LeetCode Sync</h1>
+
+    <div class="row">
+      <button id="syncBtn">Sync last 150 days</button>
+    </div>
+
+    <div id="status" class="status">Idle</div>
+    <div class="bar"><div id="barFill" class="fill" style="width:0%"></div></div>
+
+    <pre id="log"></pre>
+  </div>
+
+  <!-- popup can be a module -->
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
