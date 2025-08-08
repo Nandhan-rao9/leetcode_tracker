@@ -1,5 +1,5 @@
-// content.js — content script injected by popup. No imports.
-// Injects "injected.js" into the page context and calls it via postMessage.
+// content.js — injected by popup. No imports.
+// Injects injected.js into page, then queries GraphQL (primary) or REST (fallback) from page context.
 // Uses window.hmacSha256Hex from hmac.js.
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -14,8 +14,7 @@ function ensureInjectedOnce() {
   window.__lcInjectedLoaded = true;
 }
 
-// Robust page-context GraphQL with retries/backoff + operationName
-async function rpcGraphQL(query, variables, { label = "gql", operationName = undefined, retries = 6 } = {}) {
+async function rpcMessage(kind, payload, { label = kind, retries = 5 } = {}) {
   ensureInjectedOnce();
   const id = Math.random().toString(36).slice(2);
 
@@ -23,57 +22,42 @@ async function rpcGraphQL(query, variables, { label = "gql", operationName = und
     const p = new Promise((resolve, reject) => {
       function onMsg(ev) {
         const m = ev.data;
-        if (!m || m.__lc !== true || m.type !== "LC_GQL_RES" || m.id !== id) return;
+        if (!m || m.__lc !== true || m.type !== (kind + "_RES") || m.id !== id) return;
         window.removeEventListener("message", onMsg);
-
         if (!m.ok) {
-          const err = new Error(`GraphQL fetch failed: ${m.status || 0}`);
+          const err = new Error(`${kind} failed: ${m.status || 0}`);
           err.status = m.status || 0;
           return reject(err);
-        }
-        if (m.data && m.data.errors) {
-          return reject(new Error("GraphQL error: " + (m.data.errors[0]?.message || "unknown")));
         }
         resolve(m.data);
       }
       window.addEventListener("message", onMsg);
-      window.postMessage({ __lc: true, type: "LC_GQL", id, query, variables, operationName }, "*");
+      window.postMessage({ __lc: true, type: kind, id, ...payload }, "*");
     });
 
     try {
       return await p;
     } catch (e) {
       const status = e.status || 0;
-      if (![403, 429, 500, 502, 503, 504, 0].includes(status) || attempt === retries) {
-        throw e;
-      }
+      if (![403, 429, 500, 502, 503, 504, 0].includes(status) || attempt === retries) throw e;
       const delay = (300 + JITTER()) * Math.pow(2, attempt);
-      chrome.runtime.sendMessage({
-        type: "LC_PROGRESS",
-        done: Math.min(74, 50 + attempt * 4),
-        total: 100,
-        note: `${label}: retry ${attempt + 1}/${retries} after ${delay}ms (status ${status})`
-      });
+      chrome.runtime.sendMessage({ type: "LC_PROGRESS", done: Math.min(74, 50 + attempt * 4), total: 100, note: `${label}: retry ${attempt + 1}/${retries} after ${delay}ms (status ${status})` });
       await sleep(delay);
     }
   }
 }
 
-// Confirm login (shows username) — helps debug “0 fetched”
-async function getUserStatus() {
-  const QUERY = `
-    query userStatus {
-      userStatus {
-        isSignedIn
-        username
-      }
-    }`;
-  const data = await rpcGraphQL(QUERY, {}, { label: "userStatus", operationName: "userStatus", retries: 3 });
-  return data?.userStatus || { isSignedIn: false, username: null };
+function gql(query, variables, opts = {}) {
+  return rpcMessage("LC_GQL", { query, variables, operationName: opts.operationName }, { label: opts.label || "gql", retries: opts.retries ?? 5 });
+}
+function pageFetch(url, method = "GET", body = undefined, opts = {}) {
+  return rpcMessage("LC_FETCH", { url, method, body }, { label: opts.label || "fetch", retries: opts.retries ?? 5 });
 }
 
-// Iterate recent submissions (GraphQL pagination + throttle)
-async function* iterateSubmissions(lastDays = 150) {
+// ---------- Data sources ----------
+
+// Source A: GraphQL submissionList (paged)
+async function* iterateSubmissionsGQL(lastDays = 150) {
   const cutoff = Date.now() - lastDays * 24 * 3600 * 1000;
   let offset = 0;
   let lastKey = null;
@@ -96,21 +80,60 @@ async function* iterateSubmissions(lastDays = 150) {
     }`;
 
   while (true) {
-    const data = await rpcGraphQL(QUERY, { offset, limit, lastKey }, { label: "submissions", operationName: "Submissions" });
+    const data = await gql(QUERY, { offset, limit, lastKey }, { label: "submissions", operationName: "Submissions", retries: 5 });
     const page = data?.submissionList;
     const subs = page?.submissions || [];
     if (!subs.length) break;
 
     for (const s of subs) {
       const tsMs = (s.timestamp ? parseInt(s.timestamp, 10) : 0) * 1000;
-      if (tsMs < cutoff) return; // stop when older than cutoff
-      yield s;
+      if (tsMs < cutoff) return;
+      yield { ...s, source: "gql" };
     }
 
     if (!page.hasNext) break;
     lastKey = page.lastKey || null;
     offset += limit;
-    await sleep(800 + JITTER());
+    await sleep(700 + JITTER());
+  }
+}
+
+// Source B: REST /api/submissions/ (paged) from page context
+async function* iterateSubmissionsREST(lastDays = 150) {
+  const cutoff = Date.now() - lastDays * 24 * 3600 * 1000;
+  let offset = 0;
+  let lastKey = null;
+  const limit = 20;
+
+  while (true) {
+    const url = new URL("https://leetcode.com/api/submissions/");
+    url.searchParams.set("offset", String(offset));
+    url.searchParams.set("limit", String(limit));
+    if (lastKey) url.searchParams.set("lastkey", lastKey);
+
+    const data = await pageFetch(url.toString(), "GET", undefined, { label: "rest" });
+    const subs = data?.submissions_dump || [];
+    if (!subs.length) break;
+
+    for (const s of subs) {
+      const tsMs = (s.timestamp ? parseInt(s.timestamp, 10) : 0) * 1000;
+      if (tsMs < cutoff) return;
+      // normalize keys to match gql path
+      yield {
+        id: s.id,
+        statusDisplay: s.status_display,
+        lang: s.lang,
+        timestamp: s.timestamp,
+        title: s.title,
+        titleSlug: s.title_slug,
+        source: "rest"
+      };
+    }
+
+    if (!data.has_next) break;
+    lastKey = data.last_key || null;
+    offset += limit;
+    await sleep(700 + JITTER());
   }
 }
 
@@ -126,7 +149,7 @@ async function fetchProblemMeta(slug) {
       }
     }`;
   const vars = { titleSlug: slug };
-  const data = await rpcGraphQL(q, vars, { label: `meta:${slug}`, operationName: "questionData", retries: 4 });
+  const data = await gql(q, vars, { label: `meta:${slug}`, operationName: "questionData", retries: 4 });
   const qd = data?.question;
   return {
     title: qd?.title || slug,
@@ -182,7 +205,7 @@ async function buildImportBatch(userId, rawSubs) {
         submittedAt: it.submittedAt
       });
     }
-    await sleep(120);
+    await sleep(100 + JITTER());
   }
 
   items.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
@@ -204,12 +227,8 @@ async function postBatch(backendUrl, secret, batch) {
 }
 
 // Progress → popup
-function sendProgress(done, total, note) {
-  chrome.runtime.sendMessage({ type: "LC_PROGRESS", done, total, note });
-}
-function sendDone(inserted, duplicates, errors, total) {
-  chrome.runtime.sendMessage({ type: "LC_DONE", inserted, duplicates, errors, total });
-}
+function sendProgress(done, total, note) { chrome.runtime.sendMessage({ type: "LC_PROGRESS", done, total, note }); }
+function sendDone(inserted, duplicates, errors, total) { chrome.runtime.sendMessage({ type: "LC_DONE", inserted, duplicates, errors, total }); }
 
 // Listen to popup trigger
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -218,29 +237,31 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   (async () => {
     try {
-      // sanity: logged-in check
-      const st = await getUserStatus().catch(() => ({ isSignedIn: false }));
-      if (!st.isSignedIn) {
-        sendProgress(0, 100, "Not logged in. Open https://leetcode.com and sign in first.");
-        sendDone(0, 0, 0, 0);
-        return;
-      }
+      sendProgress(0, 100, "Fetching recent submissions…");
 
-      sendProgress(0, 100, `Fetching recent submissions for ${st.username || "you"}…`);
       const subs = [];
-      for await (const s of iterateSubmissions(150)) {
-        subs.push(s);
-        if (subs.length % 20 === 0) sendProgress(Math.min(subs.length, 50), 100, `Pulled ${subs.length} submissions…`);
+      // Try GraphQL first
+      try {
+        for await (const s of iterateSubmissionsGQL(150)) {
+          subs.push(s);
+          if (subs.length % 20 === 0) sendProgress(Math.min(40, subs.length / 2), 100, `Pulled ${subs.length} (GraphQL)…`);
+        }
+      } catch (e) {
+        chrome.runtime.sendMessage({ type: "LC_PROGRESS", done: 20, total: 100, note: `GraphQL failed (${e.message}). Falling back to REST…` });
       }
 
+      // If GQL yielded nothing, try REST
       if (subs.length === 0) {
-        sendProgress(55, 100, "No recent submissions found (last 150 days) or access blocked temporarily.");
-      } else {
-        sendProgress(55, 100, `Fetched ${subs.length}. Building batch…`);
+        for await (const s of iterateSubmissionsREST(150)) {
+          subs.push(s);
+          if (subs.length % 20 === 0) sendProgress(Math.min(60, 30 + subs.length / 2), 100, `Pulled ${subs.length} (REST)…`);
+        }
       }
+
+      sendProgress(70, 100, subs.length ? `Fetched ${subs.length}. Building batch…` : "No recent submissions found (last 150 days).");
 
       const batch = await buildImportBatch(userId, subs);
-      sendProgress(75, 100, `Enriched ${batch.items.length} problems. Uploading…`);
+      sendProgress(85, 100, `Enriched ${batch.items.length} problems. Uploading…`);
 
       const result = await postBatch(backendUrl, sharedSecret, batch);
       const { stats } = result || {};

@@ -27,7 +27,6 @@ async function ensureContentScripts(tabId) {
   await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
 }
 
-
 syncBtn.addEventListener("click", async () => {
   logEl.textContent = "";
   setProgress(0, 100);
@@ -44,10 +43,8 @@ syncBtn.addEventListener("click", async () => {
   }
 
   try {
-    // 1) Inject content scripts now
     await ensureContentScripts(tab.id);
 
-    // 2) Now message the injected content script
     const resp = await chrome.tabs.sendMessage(tab.id, {
       type: "LC_SYNC",
       backendUrl: BACKEND_URL,
@@ -65,7 +62,6 @@ syncBtn.addEventListener("click", async () => {
   }
 });
 
-// progress events from content.js
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === "LC_PROGRESS") {
     setProgress(msg.done, msg.total);
