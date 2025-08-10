@@ -48,7 +48,8 @@ async function rpcMessage(kind, payload, { label = kind, retries = 5 } = {}) {
 }
 
 function gql(query, variables, opts = {}) {
-  return rpcMessage("LC_GQL", { query, variables, operationName: opts.operationName }, { label: opts.label || "gql", retries: opts.retries ?? 5 });
+  return rpcMessage("LC_GQL", { query, variables, operationName: opts.operationName }, { label: opts.label || "gql", retries: opts.retries ?? 5 })
+  .then((res) => res?.data ?? res); // unwrap GraphQL {data: ...}
 }
 function pageFetch(url, method = "GET", body = undefined, opts = {}) {
   return rpcMessage("LC_FETCH", { url, method, body }, { label: opts.label || "fetch", retries: opts.retries ?? 5 });
@@ -217,13 +218,23 @@ async function postBatch(backendUrl, secret, batch) {
   const body = JSON.stringify(batch);
   const hex = await window.hmacSha256Hex(secret, body);
   const sig = "sha256=" + hex;
-  const res = await fetch(`${backendUrl}/import/leetcode`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "X-Signature": sig },
+
+  // Ask the service worker to perform the POST (bypasses page CORS)
+  const resp = await chrome.runtime.sendMessage({
+    type: "LC_UPLOAD",
+    backendUrl,
+    signature: sig,
     body
   });
-  if (!res.ok) throw new Error("Backend error " + res.status);
-  return res.json();
+
+  if (!resp) throw new Error("No response from background");
+  if (!resp.ok) {
+    // Surface useful info to popup log
+    const status = resp.status || 0;
+    const msg = resp.error || (resp.data && resp.data.message) || `status ${status}`;
+    throw new Error(`Backend upload failed: ${msg}`);
+  }
+  return resp.data;
 }
 
 // Progress → popup
