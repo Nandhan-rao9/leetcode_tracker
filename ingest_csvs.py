@@ -24,7 +24,7 @@ def company_from_path(path: str) -> str:
     base = os.path.basename(path)
     name, _ = os.path.splitext(base)
     name = name.replace("_", " ").replace("-", " ").strip()
-    # keep custom caps (e.g., JPMorgan) when present; else Title Case
+    # keep custom caps if present; else Title Case
     return " ".join(w if any(c.isupper() for c in w) else w.title() for w in name.split())
 
 # ---- connect ----
@@ -36,11 +36,11 @@ client = MongoClient(MONGODB_URI)
 db = client[DB_NAME]
 col = db.problems_min
 
-# indexes (safe to run repeatedly)
+# indexes (idempotent)
 col.create_index([("problem_link", 1)], unique=True)
 col.create_index([("problem_name", "text")])
+col.create_index([("companies", 1)])
 col.create_index([("num_occur", 1)])
-col.create_index([("companies", 1)])  # filter by company quickly
 
 def ingest_folder(folder=FOLDER):
     files = glob.glob(os.path.join(folder, "*.csv"))
@@ -55,23 +55,54 @@ def ingest_folder(folder=FOLDER):
             for row in reader:
                 problem_name = pick(row, NAME_KEYS).strip()
                 problem_link = pick(row, LINK_KEYS).strip()
-                num_occur    = to_int(pick(row, OCC_KEYS))
+                this_count   = to_int(pick(row, OCC_KEYS))
 
                 if not problem_link or not problem_name:
                     continue
 
-                set_fields = {
-                    "problem_name": problem_name,
-                    "num_occur": num_occur,  # keep legacy aggregate
-                    f"by_company.{company}": num_occur
-                }
+                # Build a one-key object: { "<Company>": <count> }
+                company_obj = [{ "k": company, "v": this_count }]
 
+                # Update pipeline (safe for upsert + merge)
                 ops.append(UpdateOne(
                     {"problem_link": problem_link},
-                    {
-                        "$set": set_fields,
-                        "$addToSet": {"companies": company},
-                    },
+                    [
+                        # ensure basic fields exist/updated
+                        {"$set": {
+                            "problem_link": problem_link,
+                            "problem_name": problem_name
+                        }},
+                        # merge per-company count into by_company
+                        {"$set": {
+                            "by_company": {
+                                "$mergeObjects": [
+                                    { "$ifNull": ["$by_company", {}] },
+                                    { "$arrayToObject": [ company_obj ] }
+                                ]
+                            }
+                        }},
+                        # keep companies array in sync with keys of by_company
+                        {"$set": {
+                            "companies": {
+                                "$setUnion": [
+                                    { "$ifNull": ["$companies", []] },
+                                    [ company ]
+                                ]
+                            }
+                        }},
+                        # recompute total occurrences = sum of by_company values
+                        {"$set": {
+                            "num_occur": {
+                                "$sum": {
+                                    "$map": {
+                                        "input": { "$objectToArray": { "$ifNull": ["$by_company", {}] } },
+                                        "as": "kv",
+                                        "in": "$$kv.v"
+                                    }
+                                }
+                            }
+                        }}
+                    ],
                     upsert=True
                 ))
 
