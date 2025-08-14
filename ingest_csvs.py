@@ -20,6 +20,13 @@ def to_int(x):
     try: return int(str(x).strip())
     except: return 0
 
+def company_from_path(path: str) -> str:
+    base = os.path.basename(path)
+    name, _ = os.path.splitext(base)
+    name = name.replace("_", " ").replace("-", " ").strip()
+    # keep custom caps (e.g., JPMorgan) when present; else Title Case
+    return " ".join(w if any(c.isupper() for c in w) else w.title() for w in name.split())
+
 # ---- connect ----
 load_dotenv()
 MONGODB_URI = os.getenv("MONGODB_URI")
@@ -33,6 +40,7 @@ col = db.problems_min
 col.create_index([("problem_link", 1)], unique=True)
 col.create_index([("problem_name", "text")])
 col.create_index([("num_occur", 1)])
+col.create_index([("companies", 1)])  # filter by company quickly
 
 def ingest_folder(folder=FOLDER):
     files = glob.glob(os.path.join(folder, "*.csv"))
@@ -40,6 +48,8 @@ def ingest_folder(folder=FOLDER):
 
     for path in files:
         ops = []
+        company = company_from_path(path)
+
         with open(path, newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -47,25 +57,28 @@ def ingest_folder(folder=FOLDER):
                 problem_link = pick(row, LINK_KEYS).strip()
                 num_occur    = to_int(pick(row, OCC_KEYS))
 
-                # skip malformed rows
                 if not problem_link or not problem_name:
                     continue
 
-                doc = {
-                    "problem_link": problem_link,
+                set_fields = {
                     "problem_name": problem_name,
-                    "num_occur": num_occur
+                    "num_occur": num_occur,  # keep legacy aggregate
+                    f"by_company.{company}": num_occur
                 }
+
                 ops.append(UpdateOne(
                     {"problem_link": problem_link},
-                    {"$set": doc},
+                    {
+                        "$set": set_fields,
+                        "$addToSet": {"companies": company},
+                    },
                     upsert=True
                 ))
 
         if ops:
             res = col.bulk_write(ops, ordered=False)
             total_changed += res.upserted_count + res.modified_count
-            print(f"{os.path.basename(path)} -> {res.upserted_count + res.modified_count} upserted/updated")
+            print(f"{os.path.basename(path)} ({company}) -> {res.upserted_count + res.modified_count} upserted/updated")
 
     print("Total changed:", total_changed)
 
