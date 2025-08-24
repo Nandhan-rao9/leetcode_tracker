@@ -1,0 +1,37 @@
+:root {
+  --bg: #0b0b0d; --panel:#111318; --muted:#aab; --text:#eaeaea; --line:#22252e;
+}
+* { box-sizing: border-box; }
+body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; background:var(--bg); color:var(--text); }
+a { color:#66aaff; text-decoration:none; }
+.app-shell { display:grid; grid-template-columns: 220px 1fr; min-height:100vh; }
+.sidebar { background:#0f1116; border-right:1px solid var(--line); padding:16px; }
+.sidebar .brand { font-weight:700; margin-bottom:16px; }
+.sidebar nav a { display:block; padding:8px 10px; border-radius:8px; color:#cfd6e4; }
+.sidebar nav a.active, .sidebar nav a:hover { background:#1a1e26; }
+.content { display:flex; flex-direction:column; }
+.topbar { height:48px; border-bottom:1px solid var(--line); display:flex; align-items:center; padding:0 16px; }
+.page { padding:16px; }
+
+.subtle { color:var(--muted); margin:6px 0 12px; }
+
+.filters { display:flex; gap:8px; align-items:center; margin:8px 0 12px; }
+.filters input, .filters select { background:#151923; color:var(--text); border:1px solid #222736; border-radius:8px; padding:8px 10px; }
+.filters button { background:#222736; color:var(--text); border:1px solid #2c3243; border-radius:8px; padding:8px 10px; cursor:pointer; }
+.filters button:hover { background:#2a3144; }
+
+.table-wrap { background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:auto; }
+.table { width:100%; border-collapse: collapse; }
+.table th, .table td { padding:10px 12px; border-bottom:1px solid var(--line); }
+.table th { text-align:left; color:#c8d0e0; font-weight:600; position:sticky; top:0; background:var(--panel); }
+.table tr:hover td { background:#121621; }
+.empty { padding:16px; color:var(--muted); }
+
+.company-grid { display:grid; grid-template-columns: 320px 1fr; gap:16px; }
+.left { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; }
+.right { }
+.company-list { list-style:none; padding:0; margin:12px 0 0; display:grid; gap:6px; }
+.company-list button { width:100%; text-align:left; background:#161a23; border:1px solid #23283a; color:var(--text); border-radius:8px; padding:8px 10px; }
+.company-list button.active, .company-list button:hover { background:#1c2130; }
+.company-list .count { opacity:.8; float:right; }
+.header-row { display:flex; align-items:center; justify-content:space-between; }
