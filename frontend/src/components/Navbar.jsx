@@ -39,7 +39,11 @@ function Navbar() {
       </Link>
       <ul style={navLinksStyle}>
         <li>
-          <Link to="/" style={linkStyle}>Dashboard</Link>
+          <Link to="/" style={linkStyle}>My Problems</Link>
+        </li>
+        {/* --- ADDED THIS NEW LINK --- */}
+        <li>
+          <Link to="/revision" style={linkStyle}>Daily Revision</Link>
         </li>
         <li>
           <Link to="/topics" style={linkStyle}>My Weak Topics</Link>

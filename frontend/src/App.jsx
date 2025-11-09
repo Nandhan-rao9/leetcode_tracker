@@ -6,6 +6,7 @@ import axios from 'axios';
 import Navbar from './components/Navbar';
 import Dashboard from './pages/Dashboard';
 import Topics from './pages/Topics';
+import Revision from './pages/Revision'; // <-- 1. IMPORT THE NEW PAGE
 
 // Your Flask API is running on this address
 export const API_URL = "http://127.0.0.1:5000";
@@ -21,6 +22,7 @@ function App() {
   // We'll keep all our data here in the main App
   const [allProblems, setAllProblems] = useState([]);
   const [topicStats, setTopicStats] = useState([]);
+  const [summaryStats, setSummaryStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -30,14 +32,15 @@ function App() {
       try {
         setLoading(true);
         
-        // Fetch from both endpoints at the same time
-        const [problemsResponse, statsResponse] = await Promise.all([
+        const [problemsResponse, statsResponse, summaryResponse] = await Promise.all([
           axios.get(`${API_URL}/api/problems/all`),
-          axios.get(`${API_URL}/api/stats/topic-analysis`)
+          axios.get(`${API_URL}/api/stats/topic-analysis`),
+          axios.get(`${API_URL}/api/stats/summary`)
         ]);
         
         setAllProblems(problemsResponse.data.data);
         setTopicStats(statsResponse.data.data);
+        setSummaryStats(summaryResponse.data.data);
         setError(null);
         
       } catch (err) {
@@ -61,10 +64,14 @@ function App() {
         {/* Once data is loaded, render the correct page */}
         {!loading && !error && (
           <Routes>
-            {/* We pass the data down to our pages as "props" */}
             <Route 
               path="/" 
-              element={<Dashboard solvedProblems={allProblems} />} 
+              element={<Dashboard solvedProblems={allProblems} summaryStats={summaryStats} />} 
+            />
+            {/* --- 2. ADD THE NEW ROUTE --- */}
+            <Route 
+              path="/revision" 
+              element={<Revision solvedProblems={allProblems} />} 
             />
             <Route 
               path="/topics" 

@@ -1,95 +1,88 @@
 import json
 import pymongo
-import os
 from pymongo.server_api import ServerApi
 
 # --- CONFIGURATION ---
-
-
-# 1. PASTE YOUR MONGODB CONNECTION STRING HERE
-# (Make sure to replace <password> with your actual password)
-MONGO_CONNECTION_STRING = "YOUR_STRING"
-
-# 2. Set your database and collection names
+MONGO_CONNECTION_STRING = ""
 DB_NAME = "leetcode_project"
 COLLECTION_NAME = "solved_problems"
 
-# 3. The data file you just created
-JSON_FILE_NAME = "my_solved_problems_final.json"
-
+SOLVED_FILE = "my_solved_problems_final.json"
+CLEANED_FILE = "leetcode_cleaned_topics.json"
+OUTPUT_FILE = "my_solved_problems_cleaned.json"
 # ---------------------
 
-def push_data_to_mongo():
-    print("Attempting to connect to MongoDB...")
-    
-    # Connect to MongoDB
+def merge_data():
+    """Merge your solved problems with cleaned topic data."""
+    with open(SOLVED_FILE, "r", encoding="utf-8") as f1:
+        solved = json.load(f1)
+    with open(CLEANED_FILE, "r", encoding="utf-8") as f2:
+        cleaned = json.load(f2)
+
+    # Create lookup by titleSlug
+    cleaned_map = {item["slug"]: item for item in cleaned}
+
+    merged = []
+    for s in solved:
+        slug = s["link"].split("/problems/")[-1].strip("/")
+        base = cleaned_map.get(slug)
+
+        if base:
+            merged.append({
+                "title": s["title"],
+                "slug": slug,
+                "difficulty": base["difficulty"],
+                "main_topic": base["main_topic"],
+                "secondary_topic": base["secondary_topic"],
+                "all_topics": base["all_topics"],
+                "submittedDate": s["submittedDate"],
+                "link": s["link"]
+            })
+        else:
+            # fallback if slug not found in cleaned list
+            merged.append({
+                "title": s["title"],
+                "slug": slug,
+                "difficulty": s.get("difficulty"),
+                "main_topic": None,
+                "secondary_topic": None,
+                "all_topics": [t.get("name") for t in s.get("topicTags", [])],
+                "submittedDate": s["submittedDate"],
+                "link": s["link"]
+            })
+
+    # Save locally
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(merged, f, indent=2)
+
+    print(f"✅ Merged {len(merged)} problems → saved to '{OUTPUT_FILE}'")
+    return merged
+
+
+def upload_to_mongo(data):
+    """Upload merged data to MongoDB."""
     try:
-        # Create a new client and connect to the server
         client = pymongo.MongoClient(MONGO_CONNECTION_STRING, server_api=ServerApi('1'))
-        
-        # Send a ping to confirm a successful connection
         client.admin.command('ping')
-        print("Pinged your deployment. You successfully connected to MongoDB!")
-        
+        print("✅ Connected to MongoDB successfully")
     except Exception as e:
-        print(f"❌ ERROR: Could not connect to MongoDB. Check your connection string.")
-        print(f"Details: {e}")
+        print("❌ Could not connect to MongoDB:", e)
         return
 
-    # Access your database and collection
     db = client[DB_NAME]
     collection = db[COLLECTION_NAME]
 
-    # Load the JSON data from your file
-    print(f"Loading data from '{JSON_FILE_NAME}'...")
-    try:
-        with open(JSON_FILE_NAME, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        print(f"❌ ERROR: File not found: '{JSON_FILE_NAME}'")
-        print("Please run 'process_data.py' first.")
-        return
-    except json.JSONDecodeError:
-        print(f"❌ ERROR: Could not read '{JSON_FILE_NAME}'. Is it a valid JSON?")
-        return
+    # Clear old data
+    print("🧹 Clearing old data...")
+    collection.delete_many({})
 
-    if not data:
-        print("⚠️ Warning: JSON file is empty. Nothing to upload.")
-        return
+    # Insert new
+    print(f"📤 Inserting {len(data)} documents...")
+    collection.insert_many(data)
+    print("🚀 Upload complete!")
+    client.close()
 
-    # --- Push data to MongoDB ---
-    try:
-        # Step 1: Clear the entire collection to avoid duplicates
-        print(f"Clearing old data from collection '{COLLECTION_NAME}'...")
-        delete_result = collection.delete_many({})
-        print(f"Deleted {delete_result.deleted_count} old documents.")
 
-        # Step 2: Insert the new data
-        print(f"Inserting {len(data)} new documents...")
-        insert_result = collection.insert_many(data)
-        print(f"Successfully inserted {len(insert_result.inserted_ids)} documents.")
-        
-        print("\n--- 🚀 SUCCESS! ---")
-        print("Your data is now in MongoDB.")
-
-    except Exception as e:
-        print(f"❌ ERROR: An error occurred during the database operation.")
-        print(f"Details: {e}")
-    
-    finally:
-        client.close()
-        print("Connection to MongoDB closed.")
-
-# --- Run the script ---
 if __name__ == "__main__":
-    if "PASTE_YOUR" in MONGO_CONNECTION_STRING or "<password>" in MONGO_CONNECTION_STRING:
-        print("🚨 ERROR: Please paste your MongoDB Connection String into the script.")
-    else:
-        # First, check if you have the pymongo library
-        try:
-            import pymongo
-        except ImportError:
-            print("❌ ERROR: 'pymongo' library not found.")
-            print("Please install it by running: pip install pymongo[srv]")
-        else:
-            push_data_to_mongo()
+    merged_data = merge_data()
+    upload_to_mongo(merged_data)
