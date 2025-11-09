@@ -1,9 +1,9 @@
 from flask import Flask, jsonify, request
-from .db import solved_problems_collection
+from .db import solved_problems_collection, unsolved_problems_collection # Added unsolved_problems_collection
 from bson import ObjectId # <-- IMPORTANT for Mongo
 from collections import defaultdict
 import random
-from collections import defaultdict
+# Removed duplicate defaultdict import
 
 def init_routes(app):
     
@@ -29,7 +29,7 @@ def init_routes(app):
         except Exception as e:
             return jsonify({"success": False, "error": str(e)}), 500
         
-# ... inside backend/app/routes.py ...
+    # ... inside backend/app/routes.py ...
     
     @app.route('/api/stats/topic-analysis', methods=['GET'])
     def get_topic_analysis():
@@ -89,91 +89,6 @@ def init_routes(app):
             return jsonify({"success": False, "error": str(e)}), 500
         
 
-    @app.route('/api/problems/find-similar', methods=['GET'])
-    def find_similar_problems():
-        """
-        [REFACTORED]
-        Finds 1 Easy, 1 Medium, and 1 Hard unsolved problem
-        that is similar to the provided tags.
-        Expects tags: /api/problems/find-similar?tags=Tree,Depth-First Search
-        """
-        try:
-            # 1. Get tags from the query parameters
-            query_tags = request.args.get('tags', '')
-            if not query_tags:
-                return jsonify({"success": False, "error": "No tags provided"}), 400
-            
-            # Convert string "Tag1,Tag2" into a set {'Tag1', 'Tag2'}
-            topic_tags_set = set(query_tags.split(','))
-            
-            # 2. Get all SOLVED problem slugs from our database
-            # (Your new schema uses the 'slug' field)
-            solved_slugs = set()
-            for problem in solved_problems_collection.find({}, {"slug": 1}):
-                solved_slugs.add(problem['slug'])
-
-            # 3. Find matching UNSOLVED problems and categorize
-            similar_easy = []
-            similar_medium = []
-            similar_hard = []
-            
-            # 'all_problems_list' comes from your 'all_leetcode_problems.json'
-            for problem in all_problems_list:
-                # This file uses 'titleSlug', which is equivalent to your 'slug'
-                problem_slug = problem['titleSlug'] 
-                
-                # Check if it's unsolved
-                if problem_slug not in solved_slugs:
-                    
-                    # Get the tags from the 'all_problems_list'
-                    problem_tags = set(tag['name'] for tag in problem.get('topicTags', []))
-                    
-                    # Find how many tags match
-                    common_tags = topic_tags_set.intersection(problem_tags)
-                    
-                    # We'll define "similar" as having at least 1 common tag
-                    if len(common_tags) > 0:
-                        # Format the problem data
-                        problem_data = {
-                            "title": problem['title'],
-                            "titleSlug": problem_slug, 
-                            "difficulty": problem['difficulty'],
-                            "link": f"https://leetcode.com/problems/{problem_slug}/"
-                        }
-                        
-                        # Categorize by difficulty
-                        if problem['difficulty'] == 'Easy':
-                            similar_easy.append(problem_data)
-                        elif problem['difficulty'] == 'Medium':
-                            similar_medium.append(problem_data)
-                        elif problem['difficulty'] == 'Hard':
-                            similar_hard.append(problem_data)
-            
-            # 4. Shuffle each list and pick one
-            final_list = []
-            
-            if similar_easy:
-                random.shuffle(similar_easy)
-                final_list.append(similar_easy[0])
-            
-            if similar_medium:
-                random.shuffle(similar_medium)
-                final_list.append(similar_medium[0])
-                
-            if similar_hard:
-                random.shuffle(similar_hard)
-                final_list.append(similar_hard[0])
-            
-            # final_list will now have 0-3 problems (1 of each difficulty)
-            return jsonify({
-                "success": True,
-                "count": len(final_list),
-                "data": final_list
-            })
-
-        except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
-        
     @app.route('/api/stats/summary', methods=['GET'])
     def get_solved_summary():
         """
@@ -215,3 +130,78 @@ def init_routes(app):
         except Exception as e:
             return jsonify({"success": False, "error": str(e)}), 500
         
+    
+    # This route was incorrectly unindented in the prompt.
+    # It has been moved inside the init_routes function.
+    @app.route('/api/problems/find-similar', methods=['GET'])
+    def find_similar_problems():
+        """
+        Finds 1 Easy, 1 Medium, and 1 Hard unsolved problem by
+        querying the 'unsolved_problems' collection directly.
+        Now supports case-insensitive matching and fallback logic.
+        """
+        try:
+            query_tags = request.args.get('tags', '')
+            if not query_tags:
+                return jsonify({"success": False, "error": "No tags provided"}), 400
+
+            # Normalize input tags (lowercase, strip spaces)
+            topic_tags_list = [t.lower().strip() for t in query_tags.split(',') if t.strip()]
+            if not topic_tags_list:
+                return jsonify({"success": False, "error": "No valid tags provided"}), 400
+
+            # Case-insensitive queries using lowercase all_topics
+            easy_query = {
+                "difficulty": "Easy",
+                "all_topics": {"$in": topic_tags_list}
+            }
+            medium_query = {
+                "difficulty": "Medium",
+                "all_topics": {"$in": topic_tags_list}
+            }
+            hard_query = {
+                "difficulty": "Hard",
+                "all_topics": {"$in": topic_tags_list}
+            }
+
+            # Find matches
+            similar_easy = list(unsolved_problems_collection.find(easy_query))
+            similar_medium = list(unsolved_problems_collection.find(medium_query))
+            similar_hard = list(unsolved_problems_collection.find(hard_query))
+
+            final_list = []
+
+            # random is imported at the top of the file
+            if similar_easy:
+                random.shuffle(similar_easy)
+                final_list.append(similar_easy[0])
+            if similar_medium:
+                random.shuffle(similar_medium)
+                final_list.append(similar_medium[0])
+            if similar_hard:
+                random.shuffle(similar_hard)
+                final_list.append(similar_hard[0])
+
+            # --- NEW FALLBACK LOGIC ---
+            if not final_list:
+                # Try broader match: any difficulty
+                fallback = list(unsolved_problems_collection.find({
+                    "all_topics": {"$in": topic_tags_list}
+                }).limit(3))
+                if fallback:
+                    random.shuffle(fallback)
+                    final_list = fallback
+            # ---------------------------
+
+            # Convert ObjectIds to strings
+            for p in final_list:
+                p["_id"] = str(p["_id"])
+
+            return jsonify({
+                "success": True,
+                "count": len(final_list),
+                "data": final_list
+            })
+
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500
