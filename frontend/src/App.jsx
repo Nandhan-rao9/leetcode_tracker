@@ -1,30 +1,46 @@
 import { useState, useEffect } from 'react';
+import { Routes, Route } from 'react-router-dom';
 import axios from 'axios';
 
+// Import your components
+import Navbar from './components/Navbar';
+import Dashboard from './pages/Dashboard';
+import Topics from './pages/Topics';
+
 // Your Flask API is running on this address
-const API_URL = "http://127.0.0.1:5000";
+export const API_URL = "http://127.0.0.1:5000";
+
+// Style for the main content area
+const mainContentStyle = {
+  maxWidth: '1200px',
+  margin: '0 auto',
+  padding: '2rem'
+};
 
 function App() {
-  // We'll use state to store our data
-  const [problems, setProblems] = useState([]);
+  // We'll keep all our data here in the main App
+  const [allProblems, setAllProblems] = useState([]);
+  const [topicStats, setTopicStats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // This "useEffect" hook runs once when the component loads
   useEffect(() => {
-    // Define an async function to fetch the data
-    const fetchProblems = async () => {
+    // This hook runs once and fetches all our data
+    const fetchData = async () => {
       try {
         setLoading(true);
-        // Use axios to call your Flask API
-        const response = await axios.get(`${API_URL}/api/problems/all`);
         
-        // Save the data from the API into our state
-        setProblems(response.data.data);
+        // Fetch from both endpoints at the same time
+        const [problemsResponse, statsResponse] = await Promise.all([
+          axios.get(`${API_URL}/api/problems/all`),
+          axios.get(`${API_URL}/api/stats/topic-analysis`)
+        ]);
+        
+        setAllProblems(problemsResponse.data.data);
+        setTopicStats(statsResponse.data.data);
         setError(null);
         
       } catch (err) {
-        // Handle any errors
         console.error("Error fetching data:", err);
         setError("Failed to fetch data from the server.");
       } finally {
@@ -32,37 +48,31 @@ function App() {
       }
     };
 
-    // Call the function
-    fetchProblems();
+    fetchData();
   }, []); // The empty array [] means "only run this once"
 
-  // Render the component's HTML (JSX)
   return (
-    <div className="App" style={{ padding: '2rem' }}>
-      <h1>LeetCode Revision Dashboard</h1>
-      <hr />
-      
-      {/* Show a loading message */}
-      {loading && <p>Loading data from Flask...</p>}
-      
-      {/* Show an error message if something broke */}
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-      
-      {/* Show the data when it's loaded */}
-      {!loading && !error && (
-        <div>
-          <h2>🚀 Connection Successful!</h2>
-          <p>
-            Successfully fetched <strong>{problems.length}</strong> solved problems from your MongoDB database via Flask.
-          </p>
-          
-          <h3>Sample Data:</h3>
-          <pre style={{ background: '#f4f4f4', padding: '1rem', borderRadius: '8px' }}>
-            {/* Just show the first problem as a test */}
-            {JSON.stringify(problems[0], null, 2)}
-          </pre>
-        </div>
-      )}
+    <div>
+      <Navbar />
+      <main style={mainContentStyle}>
+        {loading && <p>Loading data...</p>}
+        {error && <p style={{ color: 'red' }}>{error}</p>}
+        
+        {/* Once data is loaded, render the correct page */}
+        {!loading && !error && (
+          <Routes>
+            {/* We pass the data down to our pages as "props" */}
+            <Route 
+              path="/" 
+              element={<Dashboard solvedProblems={allProblems} />} 
+            />
+            <Route 
+              path="/topics" 
+              element={<Topics topicStats={topicStats} />} 
+            />
+          </Routes>
+        )}
+      </main>
     </div>
   );
 }
