@@ -4,7 +4,7 @@ import pymongo
 from pymongo.server_api import ServerApi
 
 # --- CONFIGURATION ---
-MONGO_CONNECTION_STRING = "mongodb+srv://22311a1903:6iR48dJ7qRRipFlh@cluster0.2nkd33g.mongodb.net/?appName=Cluster0"
+MONGO_CONNECTION_STRING = ""
 DB_NAME = "leetcode_project"
 UNSOLVED_COLLECTION = "unsolved_problems"
 

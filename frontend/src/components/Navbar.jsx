@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 
-// Inline styles for simplicity
+// (All styles are the same)
 const navStyle = {
   background: '#fff',
   padding: '0 2rem',
@@ -10,13 +10,11 @@ const navStyle = {
   justifyContent: 'space-between',
   alignItems: 'center'
 };
-
 const navLinksStyle = {
   display: 'flex',
   gap: '1.5rem',
   listStyle: 'none',
 };
-
 const linkStyle = {
   textDecoration: 'none',
   color: '#374151',
@@ -24,7 +22,6 @@ const linkStyle = {
   padding: '1.5rem 0',
   display: 'block'
 };
-
 const logoStyle = {
   ...linkStyle,
   color: '#007bff',
@@ -41,12 +38,11 @@ function Navbar() {
         <li>
           <Link to="/" style={linkStyle}>My Problems</Link>
         </li>
-        {/* --- ADDED THIS NEW LINK --- */}
         <li>
           <Link to="/revision" style={linkStyle}>Daily Revision</Link>
         </li>
         <li>
-          <Link to="/topics" style={linkStyle}>My Weak Topics</Link>
+          <Link to="/practice" style={linkStyle}>Practice Mode</Link>
         </li>
       </ul>
     </nav>

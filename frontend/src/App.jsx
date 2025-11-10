@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import axios from 'axios';
 
 // Import your components
 import Navbar from './components/Navbar';
 import Dashboard from './pages/Dashboard';
-import Topics from './pages/Topics';
-import Revision from './pages/Revision'; // <-- 1. IMPORT THE NEW PAGE
+import Revision from './pages/Revision';
+import Practice from './pages/Practice'; 
 
 // Your Flask API is running on this address
 export const API_URL = "http://127.0.0.1:5000";
@@ -19,27 +19,26 @@ const mainContentStyle = {
 };
 
 function App() {
-  // We'll keep all our data here in the main App
   const [allProblems, setAllProblems] = useState([]);
-  const [topicStats, setTopicStats] = useState([]);
+  // const [topicStats, setTopicStats] = useState([]); // <-- REMOVED
   const [summaryStats, setSummaryStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // This hook runs once and fetches all our data
     const fetchData = async () => {
       try {
         setLoading(true);
         
-        const [problemsResponse, statsResponse, summaryResponse] = await Promise.all([
+        // --- UPDATED: Only fetch 2 endpoints ---
+        const [problemsResponse, summaryResponse] = await Promise.all([
           axios.get(`${API_URL}/api/problems/all`),
-          axios.get(`${API_URL}/api/stats/topic-analysis`),
+          // axios.get(`${API_URL}/api/stats/topic-analysis`), // <-- REMOVED
           axios.get(`${API_URL}/api/stats/summary`)
         ]);
         
         setAllProblems(problemsResponse.data.data);
-        setTopicStats(statsResponse.data.data);
+        // setTopicStats(statsResponse.data.data); // <-- REMOVED
         setSummaryStats(summaryResponse.data.data);
         setError(null);
         
@@ -52,7 +51,15 @@ function App() {
     };
 
     fetchData();
-  }, []); // The empty array [] means "only run this once"
+  }, []);
+
+  const allTopicsList = useMemo(() => {
+    const topics = new Set();
+    allProblems.forEach(problem => {
+      problem.all_topics.forEach(tag => topics.add(tag));
+    });
+    return [...topics].sort(); 
+  }, [allProblems]);
 
   return (
     <div>
@@ -61,21 +68,24 @@ function App() {
         {loading && <p>Loading data...</p>}
         {error && <p style={{ color: 'red' }}>{error}</p>}
         
-        {/* Once data is loaded, render the correct page */}
         {!loading && !error && (
           <Routes>
             <Route 
               path="/" 
-              element={<Dashboard solvedProblems={allProblems} summaryStats={summaryStats} />} 
+              element={<Dashboard 
+                solvedProblems={allProblems} 
+                summaryStats={summaryStats}
+                allTopics={allTopicsList}
+              />} 
             />
-            {/* --- 2. ADD THE NEW ROUTE --- */}
             <Route 
               path="/revision" 
               element={<Revision solvedProblems={allProblems} />} 
             />
+            {/* <Route axact path="/topics" element={<Topics topicStats={topicStats} />} /> */} {/* <-- REMOVED */}
             <Route 
-              path="/topics" 
-              element={<Topics topicStats={topicStats} />} 
+              path="/practice" 
+              element={<Practice allTopics={allTopicsList} />} 
             />
           </Routes>
         )}

@@ -205,3 +205,71 @@ def init_routes(app):
 
         except Exception as e:
             return jsonify({"success": False, "error": str(e)}), 500
+        
+    @app.route('/api/problems/generate-set', methods=['POST'])
+    def generate_practice_set():
+        """
+        [NEW]
+        Generates a custom practice set based on user criteria.
+        Expects a JSON body like:
+        {
+            "topics": ["Array", "Dynamic Programming"],
+            "revision_count": 2,
+            "new_count": 3
+        }
+        """
+        try:
+            data = request.get_json()
+            topic_list = data.get('topics', [])
+            revision_count = data.get('revision_count', 0)
+            new_count = data.get('new_count', 0)
+
+            if not topic_list:
+                return jsonify({"success": False, "error": "No topics selected"}), 400
+            
+            # --- 1. Get REVISION problems (from SOLVED) ---
+            revision_problems = []
+            if revision_count > 0:
+                # Find solved problems where 'all_topics' overlaps with the 'topic_list'
+                query = {"all_topics": {"$in": topic_list}}
+                
+                # Use $sample (a fast, random Mongo aggregation)
+                pipeline = [
+                    {"$match": query},
+                    {"$sample": {"size": revision_count}}
+                ]
+                revision_problems = list(solved_problems_collection.aggregate(pipeline))
+
+            # --- 2. Get NEW problems (from UNSOLVED) ---
+            new_problems = []
+            if new_count > 0:
+                # Find unsolved problems
+                query = {"all_topics": {"$in": topic_list}}
+                pipeline = [
+                    {"$match": query},
+                    {"$sample": {"size": new_count}}
+                ]
+                new_problems = list(unsolved_problems_collection.aggregate(pipeline))
+            
+            # --- 3. Combine and clean the final list ---
+            final_list = revision_problems + new_problems
+            
+            # Add a 'type' flag for the frontend and clean _id
+            for problem in final_list:
+                problem['_id'] = str(problem['_id'])
+                # Check if the problem exists in the 'new_problems' list
+                if any(p['_id'] == problem['_id'] for p in new_problems):
+                    problem['type'] = 'New'
+                else:
+                    problem['type'] = 'Revision'
+            
+            # Shuffle the final list so new/revision are mixed
+            random.shuffle(final_list)
+
+            return jsonify({
+                "success": True,
+                "data": final_list
+            })
+
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500
