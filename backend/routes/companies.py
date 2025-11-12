@@ -80,40 +80,48 @@ def generate_plan(company):
             final.append(by_topic[t].pop(0))
         i += 1
     return jsonify(final)
-@companies_bp.route("/api/companies/<company>/plan", methods=["POST"])
-def generate_plan(company):
+@companies_bp.route("/api/companies/<company>/smart_plan", methods=["POST"])
+def generate_smart_plan(company):
     """
     Generate a diverse problem plan for a company.
+    Includes topic diversity, difficulty mix, and solved toggle.
     """
     from random import shuffle
+    from flask import request, jsonify
 
-    data = request.get_json(force=True)
-    num = int(data.get("num", 10))
-    include_solved = data.get("include_solved", False)
+    try:
+        data = request.get_json(force=True)
+        num = int(data.get("num", 10))
+        include_solved = data.get("include_solved", False)
 
-    query = {"companies": {"$in": [company]}}
-    col = unsolved_col if not include_solved else solved_col
+        # Choose collection based on flag
+        col = unsolved_col if not include_solved else solved_col
+        query = {"companies": {"$in": [company]}}
+        projection = {"_id": 0, "title": 1, "difficulty": 1, "all_topics": 1, "link": 1, "companies": 1}
 
-    problems = list(col.find(query, {"_id": 0, "title": 1, "difficulty": 1, "all_topics": 1, "link": 1}))
+        problems = list(col.find(query, projection))
+        if not problems:
+            return jsonify({"error": f"No problems found for {company}"}), 404
 
-    if not problems:
-        return jsonify({"error": "No problems found for this company"}), 404
+        # Group problems by topic for diversity
+        by_topic = {}
+        for p in problems:
+            for t in p.get("all_topics", []):
+                by_topic.setdefault(t, []).append(p)
 
-    # Group by topic to ensure diversity
-    by_topic = {}
-    for p in problems:
-        for t in p.get("all_topics", []):
-            by_topic.setdefault(t, []).append(p)
+        topics = list(by_topic.keys())
+        shuffle(topics)
 
-    # Randomized balanced selection
-    topics = list(by_topic.keys())
-    shuffle(topics)
-    plan = []
-    i = 0
-    while len(plan) < num and any(by_topic.values()):
-        topic = topics[i % len(topics)]
-        if by_topic[topic]:
-            plan.append(by_topic[topic].pop(0))
-        i += 1
+        plan = []
+        i = 0
+        while len(plan) < num and any(by_topic.values()):
+            topic = topics[i % len(topics)]
+            if by_topic[topic]:
+                plan.append(by_topic[topic].pop(0))
+            i += 1
 
-    return jsonify(plan[:num])
+        shuffle(plan)
+        return jsonify(plan[:num])
+    except Exception as e:
+        print("Error generating smart plan:", e)
+        return jsonify({"error": str(e)}), 500
