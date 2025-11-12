@@ -22,3 +22,26 @@ def get_summary():
         "totalProblems": total_problems,
         "companies": len(companies)
     })
+@summary_bp.route("/api/insights", methods=["GET"])
+def get_insights():
+    """
+    Return quick insights about problem distribution.
+    """
+    pipeline = [
+        {"$unwind": "$all_topics"},
+        {"$group": {"_id": "$all_topics", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 3},
+    ]
+    top_topics = list(solved_col.aggregate(pipeline))
+    most_requested = top_topics[0]["_id"] if top_topics else "N/A"
+    
+    # Example static placeholders for now
+    insights = {
+        "most_requested_topic": most_requested,
+        "weakest_topic": "Dynamic Programming",
+        "daily_review_count": 3,
+        "next_review": "12h",
+    }
+    return jsonify(insights)
+

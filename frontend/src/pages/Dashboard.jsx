@@ -30,6 +30,24 @@ export default function Dashboard({ setActiveCompany }) {
       }
     })();
   }, []);
+  const [insights, setInsights] = useState(null);
+
+useEffect(() => {
+  (async () => {
+    try {
+      const i = await api.get("/api/insights");
+      setInsights(i);
+    } catch {
+      setInsights({
+        most_requested_topic: "Graphs",
+        weakest_topic: "DP",
+        daily_review_count: 3,
+        next_review: "12h",
+      });
+    }
+  })();
+}, []);
+
 
   return (
     <section className="animate-fadeIn">
@@ -62,31 +80,31 @@ export default function Dashboard({ setActiveCompany }) {
           <div className="mt-3 space-y-3">
             <button className="w-full text-left px-4 py-3 rounded-xl bg-gradient-to-r from-indigo-700/20 to-cyan-700/10 shadow-inner">Generate Company Plan</button>
             <button className="w-full text-left px-4 py-3 rounded-xl border border-slate-700 hover:bg-slate-800/30">Compare Companies</button>
-            <button className="w-full text-left px-4 py-3 rounded-xl border border-slate-700 hover:bg-slate-800/30">Export CSV of Missing Problems</button>
           </div>
         </div>
       </div>
 
       <div className="mt-6 p-4 rounded-2xl bg-gradient-to-br from-slate-800/40 to-slate-900/50 shadow-inner">
-        <div className="text-sm text-slate-400 mb-2">Insights</div>
-        <div className="grid grid-cols-3 gap-4">
-          <div className="p-4 rounded-xl bg-slate-800/50">
-            <div className="text-xs text-slate-400">Most Requested Topic</div>
-            <div className="text-white font-semibold">Graphs</div>
-            <div className="text-xs text-slate-400 mt-2">Top company: Google</div>
-          </div>
-          <div className="p-4 rounded-xl bg-slate-800/50">
-            <div className="text-xs text-slate-400">Your Weakest Topic</div>
-            <div className="text-white font-semibold">Dynamic Programming</div>
-            <div className="text-xs text-slate-400 mt-2">Confidence: 42%</div>
-          </div>
-          <div className="p-4 rounded-xl bg-slate-800/50">
-            <div className="text-xs text-slate-400">Daily Review</div>
-            <div className="text-white font-semibold">3 problems</div>
-            <div className="text-xs text-slate-400 mt-2">Next review in 12h</div>
-          </div>
-        </div>
-      </div>
+  <div className="text-sm text-slate-400 mb-2">Insights</div>
+  <div className="grid grid-cols-3 gap-4">
+    <div className="p-4 rounded-xl bg-slate-800/50">
+      <div className="text-xs text-slate-400">Most Requested Topic</div>
+      <div className="text-white font-semibold">{insights?.most_requested_topic}</div>
+      <div className="text-xs text-slate-400 mt-2">Top company: Google</div>
+    </div>
+    <div className="p-4 rounded-xl bg-slate-800/50">
+      <div className="text-xs text-slate-400">Your Weakest Topic</div>
+      <div className="text-white font-semibold">{insights?.weakest_topic}</div>
+      <div className="text-xs text-slate-400 mt-2">Confidence: 42%</div>
+    </div>
+    <div className="p-4 rounded-xl bg-slate-800/50">
+      <div className="text-xs text-slate-400">Daily Review</div>
+      <div className="text-white font-semibold">{insights?.daily_review_count} problems</div>
+      <div className="text-xs text-slate-400 mt-2">Next review in {insights?.next_review}</div>
+    </div>
+  </div>
+</div>
+
     </section>
   );
 }

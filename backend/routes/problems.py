@@ -22,3 +22,18 @@ def search_problems():
     if not results:
         results = list(solved_col.find(query, fields))
     return jsonify(results)
+
+
+@problems_bp.route("/api/review/today", methods=["GET"])
+def daily_review():
+    """
+    Fetch 5–10 problems to review today.
+    Ideally based on spaced repetition — older solved problems first.
+    """
+    problems = list(solved_col.find({}, {"_id": 0, "title": 1, "difficulty": 1, "all_topics": 1, "last_solved": 1}).limit(10))
+    
+    # TODO: later we can sort by last_solved timestamp or confidence
+    for p in problems:
+        p["topics"] = p.get("all_topics", [])
+        p["review_due"] = True
+    return jsonify(problems)
