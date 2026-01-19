@@ -1,18 +1,12 @@
 # backend/utils/db.py
 from pymongo import MongoClient
-from dotenv import load_dotenv
 import os
 
-load_dotenv()
+client = MongoClient(os.getenv("MONGO_URI"))
+db = client["new_lp"]
 
-MONGO_URI = os.getenv("MONGO_URI")
-DB_NAME = os.getenv("DB_NAME", "leetcode_project")
+problems_master = db["problems_master"]
 
-if not MONGO_URI:
-    raise RuntimeError("MONGO_URI not set in environment (.env)")
+def user_solved_col(username):
+    return db[f"archive_solved_{username}"]
 
-client = MongoClient(MONGO_URI)
-db = client[DB_NAME]
-
-solved_col = db["solved_problems"]
-unsolved_col = db["unsolved_problems"]

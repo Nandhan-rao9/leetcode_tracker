@@ -1,19 +1,19 @@
 // src/utils/api.js
 import axios from "axios";
 
-const API = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || "http://localhost:5000",
-  timeout: 8000,
+const client = axios.create({
+  baseURL: "http://127.0.0.1:5000",
 });
 
-// simple wrapper - returns data or throws
-export default {
-  get: async (path, params = {}) => {
-    const res = await API.get(path, { params });
+const api = {
+  get: async (url, config) => {
+    const res = await client.get(url, config);
     return res.data;
   },
-  post: async (path, body = {}) => {
-    const res = await API.post(path, body);
+  post: async (url, body, config) => {
+    const res = await client.post(url, body, config);
     return res.data;
-  }
+  },
 };
+
+export default api;
