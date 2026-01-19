@@ -7,46 +7,90 @@ import random
 companies_bp = Blueprint("companies", __name__)
 
 # ---------- TOP COMPANIES ----------
+def readiness_bucket(raw_score: float) -> int:
+    """
+    raw_score = weighted_solved / weighted_total
+    Returns a motivating but realistic readiness percentage
+    """
+
+    if raw_score >= 0.85:
+        return 92
+    if raw_score >= 0.70:
+        return 80
+    if raw_score >= 0.55:
+        return 68
+    if raw_score >= 0.40:
+        return 55
+    if raw_score >= 0.25:
+        return 42
+    if raw_score >= 0.15:
+        return 30
+    if raw_score > 0:
+        return 22
+    return 15
+
+
+
 @companies_bp.route("/api/companies/top", methods=["GET"])
 def top_companies():
-    from collections import defaultdict
+    username = request.args.get("user")
 
-    counter = defaultdict(int)
+    solved = set()
+    if username:
+        solved = {
+            d["slug"]
+            for d in user_solved_col(username).find({}, {"_id": 0, "slug": 1})
+        }
 
-    cursor = problems_master.find({}, {"_id": 0, "by_company": 1})
+    company_stats = {}
 
-    for doc in cursor:
-        by_company = doc.get("by_company", {})
+    cursor = problems_master.find(
+        {},
+        {"_id": 1, "companies": 1, "num_occur": 1}
+    )
 
-        if not isinstance(by_company, dict):
+    for p in cursor:
+        slug = p["_id"]
+        freq = min(p.get("num_occur", 1),15)
+
+        companies = p.get("companies")
+        if not isinstance(companies, list):
             continue
 
-        for company, raw_count in by_company.items():
-            # Normalize count
-            if isinstance(raw_count, dict):
-                raw_count = raw_count.get("count", 0)
+        for company in companies:
+            if company not in company_stats:
+                company_stats[company] = {
+                    "total_problems": 0,
+                    "weighted_total": 0,
+                    "weighted_solved": 0,
+                }
 
-            if isinstance(raw_count, int):
-                counter[company] += raw_count
+            company_stats[company]["total_problems"] += 1
+            company_stats[company]["weighted_total"] += freq
 
-    sorted_companies = sorted(
-        counter.items(),
-        key=lambda x: x[1],
-        reverse=True
-    )[:20]
+            if slug in solved:
+                company_stats[company]["weighted_solved"] += freq
 
-    total = sum(c for _, c in sorted_companies) or 1
+    result = []
+    for company, s in company_stats.items():
+        if s["weighted_total"] == 0:
+            continue
 
-    return jsonify([
-        {
+        raw_score = s["weighted_solved"] / s["weighted_total"]
+        readiness = readiness_bucket(raw_score)
+
+        result.append({
             "name": company,
-            "count": count,
-            "ready": round(count / total, 2)
-        }
-        for company, count in sorted_companies
-    ])
+            "commonProblems": s["total_problems"],
+            "readiness": readiness,
+        })
 
+    result.sort(
+        key=lambda x: (x["readiness"], x["commonProblems"]),
+        reverse=True
+    )
 
+    return jsonify(result[:8])
 
 # ---------- COMPANY PROBLEMS ----------
 @companies_bp.route("/api/companies/<company>", methods=["GET"])
@@ -128,6 +172,7 @@ def smart_plan(company):
         "title": 1,
         "difficulty": 1,
         "topics": 1,
+        "acRate": 1,
         "num_occur": 1,
     }
 
@@ -145,6 +190,7 @@ def smart_plan(company):
             "slug": slug,
             "title": p["title"],
             "difficulty": p["difficulty"],
+            "acRate": p.get("acRate", None),
             "topics": p.get("topics", []),
             "is_solved": slug in solved,
             "link": f"https://leetcode.com/problems/{slug}/",

@@ -27,6 +27,13 @@ export default function CompanyView({ activeCompany, problems, onBack }) {
     );
   };
 
+  const diffColor = (d) => {
+  if (d === "Easy") return "text-green-400";
+  if (d === "Medium") return "text-yellow-400";
+  if (d === "Hard") return "text-red-400";
+  return "text-slate-400";
+};
+
   const generatePlan = async () => {
     try {
       setLoading(true);
@@ -63,41 +70,74 @@ export default function CompanyView({ activeCompany, problems, onBack }) {
           </h2>
 
           {plan.map((p) => (
-            <div
-              key={p.slug}
-              className="p-3 mb-2 rounded bg-slate-800 flex justify-between"
-            >
-              <div
-                onClick={() => window.open(p.link, "_blank")}
-                className="cursor-pointer"
-              >
-                <div
-                  className={`${
-                    doneProblems[p.slug]
-                      ? "line-through text-slate-500"
-                      : "text-white"
-                  }`}
-                >
-                  {p.title}
-                </div>
-                <div className="text-xs text-slate-400">
-                  {p.difficulty}
-                </div>
-              </div>
+  <div
+    key={p.slug}
+    className="p-4 mb-3 rounded-2xl bg-slate-900/60 border border-slate-800/40 hover:bg-slate-800/50 transition"
+  >
+    {/* Clickable content */}
+    <div
+      className="cursor-pointer"
+      onClick={() => window.open(p.link, "_blank")}
+    >
+      {/* Title */}
+      <div
+        className={`font-semibold ${
+          doneProblems[p.slug]
+            ? "line-through text-slate-500"
+            : "text-white"
+        }`}
+      >
+        {p.title}
+      </div>
 
-              <button
-                onClick={() =>
-                  setDoneProblems((prev) => ({
-                    ...prev,
-                    [p.slug]: !prev[p.slug],
-                  }))
-                }
-                className="text-xs"
-              >
-                {doneProblems[p.slug] ? "✓ Done" : "Mark"}
-              </button>
-            </div>
+      {/* Meta row */}
+      <div className="mt-1 text-xs flex flex-wrap gap-3">
+        <span className={diffColor(p.difficulty)}>
+          {p.difficulty}
+        </span>
+
+        {p.acRate != null && (
+          <span className="text-slate-400">
+            AC {p.acRate}%
+          </span>
+        )}
+      </div>
+
+      {/* Topics */}
+      {p.topics?.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {p.topics.slice(0, 4).map((t) => (
+            <span
+              key={t}
+              className="px-2 py-0.5 text-[10px] rounded-full bg-slate-800 text-slate-300"
+            >
+              {t}
+            </span>
           ))}
+        </div>
+      )}
+    </div>
+
+    {/* Actions */}
+    <div className="mt-4 flex justify-end">
+      <button
+        onClick={() =>
+          setDoneProblems((prev) => ({
+            ...prev,
+            [p.slug]: !prev[p.slug],
+          }))
+        }
+        className={`px-3 py-1 rounded-lg text-xs font-semibold ${
+          doneProblems[p.slug]
+            ? "bg-green-500/20 text-green-400"
+            : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+        }`}
+      >
+        {doneProblems[p.slug] ? "✓ Done" : "Mark"}
+      </button>
+    </div>
+  </div>
+))}
         </div>
 
         <div>

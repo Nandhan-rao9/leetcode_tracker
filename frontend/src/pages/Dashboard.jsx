@@ -17,7 +17,7 @@ useEffect(() => {
     console.log("SUMMARY FROM API:", s);
     setSummary(s);
 
-    const c = await api.get("/api/companies/top");
+    const c = await api.get(`/api/companies/top?user=${user}`);
     console.log("COMPANIES FROM API:", c);
     setTopCompanies(c);
 
