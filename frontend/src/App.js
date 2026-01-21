@@ -19,7 +19,7 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const c = await api.get("/api/companies/top");
+        const c = await api.get("/companies/top");
         setTopCompanies(Array.isArray(c) ? c : []);
       } catch (err) {
         console.error("Failed to fetch top companies", err);
@@ -35,7 +35,7 @@ export default function App() {
     (async () => {
       try {
         const res = await api.get(
-          `/api/companies/${encodeURIComponent(
+          `/companies/${encodeURIComponent(
             activeCompany.name
           )}?user=${USERNAME}`
         );

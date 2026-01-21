@@ -38,7 +38,7 @@ export default function CompanyView({ activeCompany, problems, onBack }) {
     try {
       setLoading(true);
       const res = await api.post(
-        `/api/companies/${activeCompany.name}/smart_plan`,
+        `/companies/${activeCompany.name}/smart_plan`,
         {
           user: "nandhan_rao",
           num,

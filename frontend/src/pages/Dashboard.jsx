@@ -13,15 +13,15 @@ useEffect(() => {
   (async () => {
     const user = "nandhan_rao";
 
-    const s = await api.get(`/api/summary?user=${user}`);
+    const s = await api.get(`/summary?user=${user}`);
     console.log("SUMMARY FROM API:", s);
     setSummary(s);
 
-    const c = await api.get(`/api/companies/top?user=${user}`);
+    const c = await api.get(`/companies/top?user=${user}`);
     console.log("COMPANIES FROM API:", c);
     setTopCompanies(c);
 
-    const i = await api.get("/api/insights");
+    const i = await api.get("/insights");
     console.log("INSIGHTS FROM API:", i);
     setInsights(i);
   })().catch(err => {

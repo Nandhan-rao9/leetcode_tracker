@@ -9,7 +9,7 @@ export default function Review() {
     (async () => {
       try {
         const res = await api.get(
-          "/api/review/today?user=nandhan_rao"
+          "/review/today?user=nandhan_rao"
         );
         setProblems(Array.isArray(res) ? res : []);
       } catch (err) {

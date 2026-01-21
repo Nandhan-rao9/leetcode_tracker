@@ -6,12 +6,8 @@ from routes.companies import companies_bp
 from routes.problems import problems_bp
 
 app = Flask(__name__)
-
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+CORS(app)
 
 app.register_blueprint(summary_bp)
 app.register_blueprint(companies_bp)
 app.register_blueprint(problems_bp)
-
-if __name__ == "__main__":
-    app.run(debug=True)
