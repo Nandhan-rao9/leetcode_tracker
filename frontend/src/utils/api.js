@@ -2,7 +2,7 @@
 import axios from "axios";
 
 const client = axios.create({
-  baseURL: "http://51.20.54.96:5000/",
+  baseURL: "/api",
 });
 
 const api = {
